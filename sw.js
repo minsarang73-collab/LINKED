@@ -1,7 +1,7 @@
-// 미담 service worker: keeps the app shell available offline.
+// LINKED service worker: keeps the app shell available offline.
 // Records live in IndexedDB on the device; nothing here touches them.
-const CACHE = "midam-v1.0.0";
-const FONT_CACHE = "midam-fonts";
+const CACHE = "linked-v1.0.0";
+const FONT_CACHE = "linked-fonts";
 const SHELL = [
   "./",
   "./index.html",
