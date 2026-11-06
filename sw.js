@@ -1,6 +1,6 @@
 // LINKED service worker: keeps the app shell available offline.
 // Records live in IndexedDB on the device; nothing here touches them.
-const CACHE = "linked-v1.0.5";
+const CACHE = "linked-v1.0.6";
 const FONT_CACHE = "linked-fonts";
 const SHELL = [
   "./",

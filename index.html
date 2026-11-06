@@ -730,28 +730,37 @@ function vivinoNote(c) {
   if (st.startsWith("err:")) return `<div class="ai-note err">${esc(st.slice(4))}</div>`;
   return "";
 }
-// Group field: type to see matching saved groups, or add a new one on the spot.
-function groupPicker(label, f, d, c) {
+// Type-to-find fields (groups, people): typing suggests saved entries, and a missing one can be added on the spot.
+const QP = {
+  groups: { col: "groups", noun: "모임", ph: "모임 이름을 입력하면 찾아 드려요", showAll: true, make: (name) => ({ ...DEFAULTS.group(), name }), added: (n) => `'${n}' 모임을 만들었어요` },
+  people: { col: "people", noun: "사람", ph: "이름을 입력하면 찾아 드려요", showAll: false, make: (name) => ({ ...DEFAULTS.person(), name }), added: (n) => `'${n}' 님을 사람 목록에 추가했어요` },
+};
+const qpKind = (f) => (f === "personIds" ? "people" : "groups");
+const qpQuery = (c, f) => String((c.qs || {})[f] || "");
+function setQuery(c, f, v) { c.qs = c.qs || {}; c.qs[f] = v; }
+function quickPicker(label, f, d, c, extra = "") {
   return `<div class="field"><span class="lbl">${label}</span>
-    <label class="search" style="margin-top:0">${IC.search}<input id="gq-${f}" type="search" data-gq="${f}" placeholder="모임 이름을 입력하면 찾아 드려요" value="${esc(c.gq || "")}" autocomplete="off" enterkeyhint="done"></label>
-    <div class="chips" id="gchips-${f}">${groupChips(c, f)}</div></div>`;
+    <label class="search" style="margin-top:0">${IC.search}<input id="qp-${f}" type="search" data-qp="${f}" placeholder="${QP[qpKind(f)].ph}" value="${esc(qpQuery(c, f))}" autocomplete="off" enterkeyhint="done"></label>
+    <div class="chips" id="qpc-${f}">${quickChips(c, f)}</div>${extra}</div>`;
 }
-function groupMatches(c, f) {
-  const d = c.draft; const sel = Array.isArray(d[f]) ? d[f] : d[f] ? [d[f]] : [];
-  const ql = String(c.gq || "").trim().toLowerCase();
-  const all = [...S.groups.values()].sort((a, b) => String(a.name).localeCompare(String(b.name), "ko"));
-  const shown = ql ? all.filter((g) => sel.includes(g.id) || String(g.name || "").toLowerCase().includes(ql)) : all;
-  shown.sort((a, b) => sel.includes(b.id) - sel.includes(a.id));
-  const exact = ql ? all.find((g) => String(g.name || "").trim().toLowerCase() === ql) : null;
-  return { sel, shown, exact, suggested: shown.filter((g) => !sel.includes(g.id)) };
+function quickMatches(c, f) {
+  const k = QP[qpKind(f)]; const d = c.draft; const sel = Array.isArray(d[f]) ? d[f] : d[f] ? [d[f]] : [];
+  const ql = qpQuery(c, f).trim().toLowerCase();
+  const all = [...S[k.col].values()].sort((a, b) => String(a.name).localeCompare(String(b.name), "ko"));
+  const hit = (x) => [x.name, x.company].some((v) => String(v || "").toLowerCase().includes(ql));
+  const picked = all.filter((x) => sel.includes(x.id));
+  const suggested = ql ? all.filter((x) => !sel.includes(x.id) && hit(x)).slice(0, 8) : k.showAll ? all.filter((x) => !sel.includes(x.id)) : [];
+  const exact = ql ? all.find((x) => String(x.name || "").trim().toLowerCase() === ql) : null;
+  return { sel, shown: [...picked, ...suggested], exact, suggested };
 }
-function groupChips(c, f) {
-  const q = String(c.gq || "").trim(); const { sel, shown, exact } = groupMatches(c, f);
-  let h = shown.map((g) => `<button class="chip ${sel.includes(g.id) ? "on" : ""}" type="button" data-act="chip" data-f="${f}" data-v="${esc(g.id)}">${esc(g.name)}</button>`).join("");
-  if (q && !exact) h += `<button class="chip add" type="button" data-act="groupAdd" data-f="${f}">+ '${esc(q)}' 새 모임 추가</button>`;
-  if (!q && !shown.length) h += `<p class="hint">이름을 입력하면 새 모임을 만들 수 있어요.</p>`;
+function quickChips(c, f) {
+  const kind = qpKind(f); const q = qpQuery(c, f).trim(); const { sel, shown, exact } = quickMatches(c, f);
+  let h = shown.map((x) => `<button class="chip ${sel.includes(x.id) ? "on" : ""}" type="button" data-act="chip" data-f="${f}" data-v="${esc(x.id)}">${esc(x.name || "이름 없음")}${kind === "people" && x.company && !sel.includes(x.id) ? ` <span style="font-weight:300;opacity:.75">· ${esc(x.company)}</span>` : ""}</button>`).join("");
+  if (q && !exact) h += `<button class="chip add" type="button" data-act="quickAdd" data-f="${f}">+ '${esc(q)}' 새 ${QP[kind].noun} 추가</button>`;
+  if (!q && !shown.length) h += `<p class="hint">${kind === "people" ? "이름을 입력하면 찾거나 새로 추가할 수 있어요." : "이름을 입력하면 새 모임을 만들 수 있어요."}</p>`;
   return h;
 }
+const pickListBtn = `<div class="chips"><button class="chip add" type="button" data-act="pickPeople" data-f="personIds">+ 목록에서 고르기</button></div>`;
 function pickSummary(label, ids, map, act, field, emptyTxt) {
   const items = (ids || []).map((id) => map.get(id)).filter(Boolean);
   return `<div class="field"><span class="lbl">${label}</span><div class="chips">${items.map((x) => `<span class="chip">${esc(x.name || x.title || "")}</span>`).join("")}<button class="chip add" type="button" data-act="${act}" data-f="${field}">${items.length ? "바꾸기" : "+ 고르기"}</button></div>${items.length ? "" : emptyTxt ? `<p class="hint">${emptyTxt}</p>` : ""}</div>`;
@@ -773,7 +782,7 @@ SC.personForm = (c) => {
     <div class="two">${fText("전화번호", "phone", d, "010-0000-0000", "tel")}${fText("이메일", "email", d, "", "email")}</div>
     <div class="two">${fText("생일", "birthday", d, "", "date")}${fText("사는 곳", "address", d, "예: 서울 서초동")}</div>
     ${fArea("명함 기타 정보", "cardInfo", d, "회사 주소, 웹사이트 등", 2)}
-    ${groupPicker("모임", "groupIds", d, c)}
+    ${quickPicker("모임", "groupIds", d, c)}
     ${fChips("친밀도", "closeness", d, CLOSE)}</div>
   <div class="fgroup"><p class="fgroup-title">학력 · 경력</p>${fArea("학력", "education", d, "예: OO고 → OO대 경영학과(98학번) → MBA", 2)}${fArea("경력", "career", d, "예: A사(2005~2015) → B사 상무(2015~현재)", 3)}</div>
   <div class="fgroup"><p class="fgroup-title">가족</p>${fText("배우자", "spouse", d, "예: 김영희 (교사)")}${fText("자녀 이름", "kids", d, "예: 첫째 민준(2012년생), 둘째 서연(2016년생)")}${fArea("자녀 관련 기억할 것", "kidsNotes", d, "학교, 학년, 관심사, 입시·진로, 최근 소식", 3)}</div>
@@ -789,8 +798,8 @@ SC.meetingForm = (c) => {
   const d = c.draft;
   return formbar(c.id ? "만남 편집" : "새 만남 기록", c) + `<div class="form">
   <div class="fgroup">${fText("날짜 *", "date", d, "", "date")}${fText("제목", "title", d, "비워 두면 모임·사람 이름으로 정해져요")}
-    ${groupPicker("모임", "groupId", d, c)}
-    ${pickSummary("함께한 사람", d.personIds, S.people, "pickPeople", "personIds", "")}
+    ${quickPicker("모임", "groupId", d, c)}
+    ${quickPicker("함께한 사람", "personIds", d, c, pickListBtn)}
     ${fText("장소", "place", d, "예: 청담동 OO 스테이크하우스")}</div>
   <div class="fgroup"><p class="fgroup-title">음식 · 와인</p>${fChips("음식 종류", "cuisine", d, CUISINE)}${fArea("먹은 음식", "food", d, "예: 드라이에이징 등심, 트러플 리조또", 2)}
     ${pickSummary("마신 와인", d.wineIds, S.wines, "pickWines", "wineIds", "와인을 고르거나 새로 등록하세요. 라벨 사진만 찍어도 돼요.")}
@@ -821,7 +830,7 @@ SC.giftForm = (c) => {
   return formbar(c.id ? "선물 편집" : "새 선물 기록", c) + `<div class="form"><div class="fgroup">
     <div class="seg"><button type="button" class="${d.direction !== "received" ? "on" : ""}" data-act="chip" data-f="direction" data-v="given" data-keep="1">내가 준 선물</button><button type="button" class="${d.direction === "received" ? "on" : ""}" data-act="chip" data-f="direction" data-v="received" data-keep="1">받은 선물</button></div>
     ${fText("선물 *", "title", d, "예: 싱글몰트 위스키")}${fText("날짜", "date", d, "", "date")}
-    ${pickSummary(d.direction === "received" ? "준 사람" : "받은 사람", d.personIds, S.people, "pickPeople", "personIds", "")}
+    ${quickPicker(d.direction === "received" ? "준 사람" : "받은 사람", "personIds", d, c, pickListBtn)}
     ${fChips("계기", "occasion", d, OCCASION)}${fText("가격", "price", d, "예: 120000", "number", 'inputmode="numeric"')}
     ${photoField("사진", "photoId", d, c)}
     <label class="check"><input type="checkbox" id="f-needReturn" data-f="needReturn" ${d.needReturn ? "checked" : ""}> 답례가 필요해요</label>
@@ -900,7 +909,7 @@ function sheet() {
 }
 
 /* ---------- local store: records and photos stay on this device (IndexedDB) ---------- */
-const APP_VERSION = "1.0.5";
+const APP_VERSION = "1.0.6";
 const DB_NAME = "midam";
 const STORES = [...COLS, "settings", "photos"];
 let idb = null;
@@ -998,18 +1007,18 @@ const WINE_SCHEMA = obj({ name: STR, winery: STR, vintage: STR, type: { type: "s
 const CARD_PROMPT = "사진은 명함입니다(앞면이나 뒷면). 명함에 적힌 정보를 읽어 주세요. 읽을 수 없거나 없는 항목은 빈 문자열로 두세요. 이름은 명함 표기 그대로 쓰되 한국어 이름이 있으면 한국어로 쓰세요. 전화번호는 휴대폰 번호를 우선하세요.";
 const WINE_PROMPT = "사진은 와인 라벨입니다. 라벨을 읽고 와인을 식별해 주세요. 확실하지 않은 항목은 빈 문자열로 두세요. name과 winery는 라벨 표기(원어) 그대로, grapes·country·region은 한국어로 쓰세요. vintage는 연도 숫자 4자리입니다. type은 레드, 화이트, 로제, 스파클링, 디저트, 주정강화 중 하나입니다. about은 이 와인의 특징을 한국어 한두 문장으로 쓰세요.";
 
-function selectGroup(c, f, id) {
+function selectEntry(c, f, id) {
   if (Array.isArray(c.draft[f])) { if (!c.draft[f].includes(id)) c.draft[f].push(id); } else c.draft[f] = id;
 }
-async function addGroupFromQuery(c, f) {
-  const name = String(c.gq || "").trim(); if (!name || !c.draft) return;
-  const { exact } = groupMatches(c, f);
-  if (exact) { selectGroup(c, f, exact.id); c.gq = ""; render(false); return; }
+async function addFromQuery(c, f) {
+  const k = QP[qpKind(f)]; const name = qpQuery(c, f).trim(); if (!name || !c.draft) return;
+  const { exact } = quickMatches(c, f);
+  if (exact) { selectEntry(c, f, exact.id); setQuery(c, f, ""); render(false); return; }
   try {
     const id = newId(); const now = Date.now();
-    await saveDoc("groups", id, { ...DEFAULTS.group(), name, createdAt: now, updatedAt: now });
-    selectGroup(c, f, id); c.gq = "";
-    toast(`'${name}' 모임을 만들었어요`);
+    await saveDoc(k.col, id, { ...k.make(name), createdAt: now, updatedAt: now });
+    selectEntry(c, f, id); setQuery(c, f, "");
+    toast(k.added(name));
   } catch (e) { toast(dbErr(e)); }
   if (cur() === c) render(false);
 }
@@ -1230,7 +1239,7 @@ const A = {
   delAsk: () => { cur().confirmDel = true; render(false); },
   delNo: () => { cur().confirmDel = false; render(false); },
   delYes: () => deleteCurrent(),
-  chip: (el) => { const c = cur(); const f = el.dataset.f, v = el.dataset.v; if (!c.draft) return; if (el.closest("[id^='gchips-']")) c.gq = ""; if (Array.isArray(c.draft[f])) { const a = c.draft[f]; const i = a.indexOf(v); i >= 0 ? a.splice(i, 1) : a.push(v); } else c.draft[f] = c.draft[f] === v && !el.dataset.keep ? "" : v; render(false); },
+  chip: (el) => { const c = cur(); const f = el.dataset.f, v = el.dataset.v; if (!c.draft) return; if (el.closest("[id^='qpc-']")) setQuery(c, f, ""); if (Array.isArray(c.draft[f])) { const a = c.draft[f]; const i = a.indexOf(v); i >= 0 ? a.splice(i, 1) : a.push(v); } else c.draft[f] = c.draft[f] === v && !el.dataset.keep ? "" : v; render(false); },
   star: (el) => { const c = cur(); const n = Number(el.dataset.v); c.draft.myRating = c.draft.myRating === n ? 0 : n; render(false); },
   phDel: (el, e) => {
     e.stopPropagation(); const c = cur(); const f = el.dataset.f;
@@ -1321,7 +1330,7 @@ const A = {
     try { const reg = await navigator.serviceWorker?.getRegistration(); if (reg) await reg.update(); } catch { /* offline */ }
     setTimeout(() => location.reload(), 1500);
   },
-  groupAdd: (el) => addGroupFromQuery(cur(), el.dataset.f),
+  quickAdd: (el) => addFromQuery(cur(), el.dataset.f),
   aiClear: () => { const c = cur(); c.draft.aiKey = ""; c.aiTest = ""; render(false); },
   install: async () => { if (!installEvt) return; installEvt.prompt(); try { await installEvt.userChoice; } catch { /* ignore */ } installEvt = null; render(false); },
   hideInstall: () => { LS.hideInstall = true; try { localStorage.setItem("midam.hideInstall", "1"); } catch { /* ignore */ } render(false); },
@@ -1358,7 +1367,7 @@ document.addEventListener("click", (e) => {
 const onField = (e) => {
   const t = e.target;
   if (t.dataset?.f) { const c = cur(); if (!c.draft) return; c.draft[t.dataset.f] = t.type === "checkbox" ? t.checked : t.value; return; }
-  if (t.dataset?.gq) { const c = cur(); if (!c.draft || c.gq === t.value) return; c.gq = t.value; const l = $("#gchips-" + t.dataset.gq); if (l) l.innerHTML = groupChips(c, t.dataset.gq); return; }
+  if (t.dataset?.qp) { const c = cur(); const f = t.dataset.qp; if (!c.draft || qpQuery(c, f) === t.value) return; setQuery(c, f, t.value); const l = $("#qpc-" + f); if (l) l.innerHTML = quickChips(c, f); return; }
   const q = t.dataset?.q; if (!q) return;
   if (q === "pq") { LS.pq = t.value; const l = $("#people-list"); if (l) l.innerHTML = peopleList(); }
   else if (q === "wq") { LS.wq = t.value; const l = $("#wine-list"); if (l) l.innerHTML = wineList(); }
@@ -1369,13 +1378,13 @@ document.addEventListener("change", (e) => { if (e.target.dataset?.up) handleUpl
 document.addEventListener("error", (e) => { if (e.target && e.target.tagName === "IMG") e.target.classList.add("broken"); }, true);
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && $("#overlay").innerHTML) closeOverlay();
-  const f = e.target?.dataset?.gq;
+  const f = e.target?.dataset?.qp;
   if (f && e.key === "Enter" && !e.isComposing) {
-    e.preventDefault(); const c = cur(); if (!c.draft || !String(c.gq || "").trim()) return;
-    const { exact, suggested } = groupMatches(c, f);
-    if (exact) { selectGroup(c, f, exact.id); c.gq = ""; render(false); }
-    else if (suggested.length === 1) { selectGroup(c, f, suggested[0].id); c.gq = ""; render(false); }
-    else addGroupFromQuery(c, f);
+    e.preventDefault(); const c = cur(); if (!c.draft || !qpQuery(c, f).trim()) return;
+    const { exact, suggested } = quickMatches(c, f);
+    if (exact) { selectEntry(c, f, exact.id); setQuery(c, f, ""); render(false); }
+    else if (suggested.length === 1) { selectEntry(c, f, suggested[0].id); setQuery(c, f, ""); render(false); }
+    else addFromQuery(c, f);
   }
 });
 window.addEventListener("popstate", () => { if ($("#overlay").innerHTML) { closeOverlay(); return; } if (stack.length > 1) doBack(); });
