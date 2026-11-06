@@ -688,7 +688,9 @@ SC.wine = (c) => {
   if (rows.length) h += `<div class="card flat"><dl class="kv">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join("")}</dl></div>`;
   if (w.about) h += `<div class="card flat"><p class="card-title">와인 소개</p><p class="para">${esc(w.about)}</p></div>`;
   if (w.notes) h += `<div class="card flat"><p class="card-title">테이스팅 노트</p><p class="para">${esc(w.notes)}</p></div>`;
-  h += `<div class="btn-row">${w.vivinoUrl ? `<a class="btn ghost small" href="${esc(w.vivinoUrl)}" target="_blank" rel="noopener">${IC.ext} Vivino 열기</a>` : ""}<a class="btn ghost small" href="https://www.vivino.com/search/wines?q=${q}" target="_blank" rel="noopener">${IC.search} Vivino에서 찾기</a></div>`;
+  h += w.vivinoUrl
+    ? `<a class="btn ghost small" href="${esc(w.vivinoUrl)}" target="_blank" rel="noopener">${IC.ext} Vivino 열기</a>`
+    : `<a class="btn ghost small" href="https://www.vivino.com/search/wines?q=${q}" target="_blank" rel="noopener">${IC.search} Vivino에서 찾기</a>`;
   if (who.length) h += `<section class="sec"><p class="sec-label">함께 마신 사람</p><div class="card flat" style="padding:2px 16px">${who.map((id) => personRow(S.people.get(id))).join("")}</div></section>`;
   if (ms.length) h += `<section class="sec"><p class="sec-label">마신 날</p>${ms.map(gather).join("")}</section>`;
   return h + `</div>`;
@@ -876,7 +878,7 @@ function sheet() {
 }
 
 /* ---------- local store: records and photos stay on this device (IndexedDB) ---------- */
-const APP_VERSION = "1.0.3";
+const APP_VERSION = "1.0.4";
 const DB_NAME = "midam";
 const STORES = [...COLS, "settings", "photos"];
 let idb = null;
