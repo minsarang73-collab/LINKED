@@ -1,6 +1,6 @@
 // LINKED service worker: keeps the app shell available offline.
 // Records live in IndexedDB on the device; nothing here touches them.
-const CACHE = "linked-v1.0.2";
+const CACHE = "linked-v1.0.3";
 const FONT_CACHE = "linked-fonts";
 const SHELL = [
   "./",
@@ -14,7 +14,7 @@ const SHELL = [
 ];
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  event.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: "reload" })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener("activate", (event) => {
@@ -34,7 +34,7 @@ self.addEventListener("fetch", (event) => {
     if (req.mode === "navigate") {
       // Network first so updates arrive; fall back to the cached page offline.
       event.respondWith(
-        fetch(req)
+        fetch(req, { cache: "no-store" })
           .then((res) => { const copy = res.clone(); caches.open(CACHE).then((c) => c.put("./index.html", copy)); return res; })
           .catch(() => caches.match("./index.html")),
       );

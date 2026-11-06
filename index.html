@@ -367,6 +367,7 @@ const S = { groups: new Map(), people: new Map(), meetings: new Map(), wines: ne
 const LS = { pq: "", pg: "", psort: "recent", wq: "", wt: "", rec: "meet" };
 let tab = "home";
 let stack = [{ name: "home" }];
+let UPDATE_READY = false; // a new app version took over while a form was open
 const cur = () => stack[stack.length - 1];
 const ROOTS = ["home", "people", "groups", "records", "wines"];
 const isFormLike = (c) => /Form$/.test(c.name) || c.name === "pick" || c.name === "settings";
@@ -815,7 +816,7 @@ function pickList(c) {
   if (q) items = items.filter((x) => [x.name, x.company, x.winery, x.region].some((v) => String(v || "").toLowerCase().includes(q)));
   items.sort((a, b) => (c.sel.has(b.id) - c.sel.has(a.id)) || String(a.name).localeCompare(String(b.name), "ko"));
   if (!items.length) return empty(isWine ? "와인이 없어요" : "사람이 없어요", "위 버튼으로 새로 추가해 보세요.");
-  return items.map((x) => `<button class="pick-row ${c.sel.has(x.id) ? "on" : ""}" type="button" data-act="pickToggle" data-id="${esc(x.id)}"><span class="pick-box">${IC.check}</span>${isWine ? `<span class="row-main"><span class="row-title" style="display:block">${esc(x.name)}</span><span class="row-sub" style="display:block">${esc([x.vintage, x.type, x.winery].filter(Boolean).join(" · "))}</span></span>` : `${avatar(x, 36)}<span class="row-main"><span class="row-title" style="display:block">${esc(x.name)}</span><span class="row-sub" style="display:block">${esc([x.company, x.title].filter(Boolean).join(" · "))}</span></span>`}</button>`).join("");
+  return items.map((x) => `<button class="pick-row ${c.sel.has(x.id) ? "on" : ""}" type="button" data-act="pickToggle" data-id="${esc(x.id)}"><span class="pick-box">${IC.check}</span>${isWine ? `<span class="row-main"><span class="row-title" style="display:block">${esc(x.name || "이름 없는 와인")}</span><span class="row-sub" style="display:block">${esc([x.vintage, x.type, x.winery].filter(Boolean).join(" · "))}</span></span>` : `${avatar(x, 36)}<span class="row-main"><span class="row-title" style="display:block">${esc(x.name)}</span><span class="row-sub" style="display:block">${esc([x.company, x.title].filter(Boolean).join(" · "))}</span></span>`}</button>`).join("");
 }
 SC.settings = (c) => {
   const d = c.draft; const t = c.aiTest || "";
@@ -835,12 +836,13 @@ SC.settings = (c) => {
   ${installGuide()}
   <div class="fgroup"><p class="fgroup-title">개인정보</p><p class="hint" style="display:block">LINKED는 기록을 보관하는 서버가 없는 앱이에요. 다른 사람은 물론 앱을 만든 사람도 기록을 볼 수 없어요. 다른 사람에게 이 앱 주소를 알려 주면, 그 사람은 자기 휴대폰에 따로 기록해요.</p></div>
   ${hasEx ? `<div class="fgroup"><p class="fgroup-title">예시 기록</p><button class="btn danger small" type="button" data-act="unseed">예시 기록 모두 지우기</button></div>` : ""}
-  <p class="hint" style="justify-content:center">LINKED · 버전 ${APP_VERSION}</p></div>`;
+  <p class="hint" style="justify-content:center;align-items:center;gap:10px">LINKED · 버전 ${APP_VERSION} <button class="sec-link" type="button" data-act="checkUpdate">새 버전 확인</button></p></div>`;
 };
 
 /* ---------- render ---------- */
 let rafPending = false, deferred = false;
 function render(top) {
+  if (UPDATE_READY && !isFormLike(cur())) { location.reload(); return; }
   const c = cur(); const fn = SC[c.name] || SC.home; let html;
   try { html = fn(c); } catch (err) { console.error(err); html = topbar("") + empty("화면을 그리지 못했어요", "뒤로 가서 다시 열어 주세요."); }
   $("#view").innerHTML = html;
@@ -874,7 +876,7 @@ function sheet() {
 }
 
 /* ---------- local store: records and photos stay on this device (IndexedDB) ---------- */
-const APP_VERSION = "1.0.2";
+const APP_VERSION = "1.0.3";
 const DB_NAME = "midam";
 const STORES = [...COLS, "settings", "photos"];
 let idb = null;
@@ -978,7 +980,7 @@ async function saveForm() {
   const d = c.draft;
   if (kind === "person" && !String(d.name || "").trim()) return toast("이름을 입력해 주세요");
   if (kind === "group" && !String(d.name || "").trim()) return toast("모임 이름을 입력해 주세요");
-  if (kind === "wine" && !String(d.name || "").trim()) return toast("와인 이름을 입력해 주세요");
+  if (kind === "wine" && !String(d.name || "").trim() && !d.labelId) return toast("와인 이름을 입력하거나 라벨 사진을 올려 주세요");
   if (kind === "gift" && !String(d.title || "").trim()) return toast("어떤 선물인지 입력해 주세요");
   if (kind === "meeting") {
     if (!d.date) return toast("날짜를 입력해 주세요");
@@ -1276,6 +1278,11 @@ const A = {
     catch (e) { c.aiTest = "err:" + aiErr(aiCode(e)); }
     if (cur() === c) render(false);
   },
+  checkUpdate: async () => {
+    toast("새 버전을 확인하는 중이에요");
+    try { const reg = await navigator.serviceWorker?.getRegistration(); if (reg) await reg.update(); } catch { /* offline */ }
+    setTimeout(() => location.reload(), 1500);
+  },
   aiClear: () => { const c = cur(); c.draft.aiKey = ""; c.aiTest = ""; render(false); },
   install: async () => { if (!installEvt) return; installEvt.prompt(); try { await installEvt.userChoice; } catch { /* ignore */ } installEvt = null; render(false); },
   hideInstall: () => { LS.hideInstall = true; try { localStorage.setItem("midam.hideInstall", "1"); } catch { /* ignore */ } render(false); },
@@ -1336,7 +1343,20 @@ render(true);
   } catch (e) { console.error(e); S.dbState = "err"; }
   render(false);
 })();
-if ("serviceWorker" in navigator) window.addEventListener("load", () => { navigator.serviceWorker.register("./sw.js").catch(() => {}); });
+if ("serviceWorker" in navigator) {
+  const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (!hadController) return; // first install, not an update
+    if (isFormLike(cur())) { UPDATE_READY = true; toast("새 버전이 준비됐어요. 저장하거나 취소하면 적용돼요"); }
+    else location.reload();
+  });
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./sw.js").then((reg) => {
+      reg.update().catch(() => {});
+      document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") reg.update().catch(() => {}); });
+    }).catch(() => {});
+  });
+}
 })();
 </script>
 </body>
